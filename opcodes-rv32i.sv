@@ -111,7 +111,7 @@
 
 `define IMM_I_TYPE(inst) {{20{inst[31]}},inst[31:20]}
 `define IMM_S_TYPE(inst) {{20{inst[31]}},inst[31:25],inst[11:8],inst[7]}
-`define IMM_B_TYPE(inst) {{19{inst[31]}},inst[7],inst[31:25],inst[11:8],1'b0}
+`define IMM_B_TYPE(inst) {{20{inst[31]}},inst[7],inst[31:25],inst[11:8],1'b0}
 `define IMM_U_TYPE(inst) {inst[31:12],12'b0}
 `define IMM_J_TYPE(inst) {{12{inst[31]}},inst[19:12],inst[20],inst[30:21],1'b0}
 

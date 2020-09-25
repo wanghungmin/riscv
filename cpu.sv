@@ -69,14 +69,77 @@ logic load_stall;
 //assign load_stall = (pipe1.mem_load & ((pipe1.rd == pipe0.inst[`RS1])|(pipe1.rd == pipe0.inst[`RS2])))? 1'b1:1'b0;
 assign load_stall = pipe1.mem_load;
 PipelineReg1 next_pipe1;
-
+Data imm;
+Data s2;
+ALU1_SEL alu1_sel;
+ALU2_SEL alu2_sel;
+ADD1_SEL add1_sel;
+ADD2_SEL add2_sel;
 always_comb begin
-	next_pipe1.pc = pipe0.pc;
-	next_pipe1.s1 = RF[im_inst[`RS1]];
-	next_pipe1.s2 = RF[im_inst[`RS2]];
+	//imm setting
+	unique if(`IS_I_TYPE(im_inst)) 	imm = `IMM_I_TYPE(im_inst);
+	else if(`IS_B_TYPE(im_inst))	imm = `IMM_B_TYPE(im_inst);
+	else if(`IS_S_TYPE(im_inst))	imm = `IMM_S_TYPE(im_inst);
+	else if(`IS_U_TYPE(im_inst))	imm = `IMM_U_TYPE(im_inst);
+	else if(`IS_J_TYPE(im_inst))	imm = `IMM_J_TYPE(im_inst);
+	else imm = 'x;
+	
+	s2 = RF[im_inst[`RS2]];
 	next_pipe1.rd = im_inst[`RD];
+	//alu1_sel
+	unique case(im_inst[`OPCODE])
+	`OPCODE_JAL		:alu1_sel = ALU1_SEL_PC;
+	`OPCODE_JALR	:alu1_sel = ALU1_SEL_PC;
+	`OPCODE_AUIPC	:alu1_sel = ALU1_SEL_PC;
+	`OPCODE_LUI		:alu1_sel = ALU1_SEL_0;
+	default			:alu1_sel = ALU1_SEL_S1;
+	endcase
+	unique case(alu1_sel)
+	ALU1_SEL_S1 	:next_pipe1.alu1 = RF[im_inst[`RS1]];
+	ALU1_SEL_PC 	:next_pipe1.alu1 = pipe0.pc;
+	ALU1_SEL_0		:next_pipe1.alu1 = '0;
+	default			:next_pipe1.alu1 = 'x;
+	endcase
+	//alu2_sel
+	unique case(im_inst[`OPCODE])
+	`OPCODE_JAL		:alu2_sel = ALU2_SEL_4;
+	`OPCODE_JALR	:alu2_sel = ALU2_SEL_4;
+	`OPCODE_AUIPC	:alu2_sel = ALU2_SEL_IMM;
+	`OPCODE_LUI		:alu2_sel = ALU2_SEL_IMM;
+	`OPCODE_OPIMM	:alu2_sel = ALU2_SEL_IMM;
+	`OPCODE_LOAD	:alu2_sel = ALU2_SEL_IMM;
+	`OPCODE_STORE	:alu2_sel = ALU2_SEL_IMM;
+	default			:alu2_sel = ALU2_SEL_S2;
+	endcase                     
+	unique case(alu2_sel)
+	ALU2_SEL_S2 	:next_pipe1.alu2 = RF[im_inst[`RS2]];
+	ALU2_SEL_IMM 	:next_pipe1.alu2 = imm;
+	ALU2_SEL_4		:next_pipe1.alu2 = 'd4;
+	default			:next_pipe1.alu2 = 'x;
+	endcase
+	//add1_sel
+	unique case(im_inst[`OPCODE])
+	`OPCODE_JALR	:add1_sel = ADD1_SEL_S1;
+	default			:add1_sel = ADD1_SEL_PC;
+	endcase
+	unique case(add1_sel)
+	ADD1_SEL_S1 	:next_pipe1.add1 = RF[im_inst[`RS1]];
+	ADD1_SEL_PC 	:next_pipe1.add1 = pipe0.pc;
+	default			:next_pipe1.add1 = 'x;
+	endcase
 	
+	//add2_sel
+	unique case(im_inst[`OPCODE])
+	`OPCODE_STORE	:add2_sel = ADD2_SEL_S2;
+	default			:add2_sel = ADD2_SEL_IMM;
+	endcase
+	unique case(add2_sel)
+	ADD2_SEL_S2 	:next_pipe1.add2 = RF[im_inst[`RS2]];
+	ADD2_SEL_IMM 	:next_pipe1.add2 = imm;
+	default			:next_pipe1.add2 = 'x;
+	endcase
 	
+	//mem_load
 	unique if(im_inst[`OPCODE] == `OPCODE_LOAD) next_pipe1.mem_load=1'b1;
 	else  next_pipe1.mem_load=1'b0;
 	
@@ -96,34 +159,8 @@ always_comb begin
 	default			:next_pipe1.jump_sel =1'b0;
 	endcase
 	
-	//opnd1_sel setting
-	unique case(im_inst[`OPCODE])
-	`OPCODE_JAL		:next_pipe1.opnd1_sel =OPND1_SEL_PC;
-	`OPCODE_JALR	:next_pipe1.opnd1_sel =OPND1_SEL_PC;
-	`OPCODE_AUIPC	:next_pipe1.opnd1_sel =OPND1_SEL_PC;
-	`OPCODE_LUI		:next_pipe1.opnd1_sel =OPND1_SEL_0;
-	default			:next_pipe1.opnd1_sel =OPND1_SEL_S1;
-	endcase
-	//opnd2_sel setting
-	unique case(im_inst[`OPCODE])
-	`OPCODE_JAL		:next_pipe1.opnd2_sel =OPND2_SEL_4;
-	`OPCODE_JALR	:next_pipe1.opnd2_sel =OPND2_SEL_4;
-	`OPCODE_AUIPC	:next_pipe1.opnd2_sel =OPND2_SEL_IMM;
-	`OPCODE_LUI		:next_pipe1.opnd2_sel =OPND2_SEL_IMM;
-	`OPCODE_OPIMM	:next_pipe1.opnd2_sel =OPND2_SEL_IMM;
-	`OPCODE_LOAD	:next_pipe1.opnd2_sel =OPND2_SEL_IMM;
-	`OPCODE_STORE	:next_pipe1.opnd2_sel =OPND2_SEL_IMM;
-	default			:next_pipe1.opnd2_sel =OPND2_SEL_S2;
-	endcase
 	
 	
-	//imm setting
-	unique if(`IS_I_TYPE(im_inst)) 		next_pipe1.imm = `IMM_I_TYPE(im_inst);
-	else if(`IS_B_TYPE(im_inst))	next_pipe1.imm = `IMM_B_TYPE(im_inst);
-	else if(`IS_S_TYPE(im_inst))	next_pipe1.imm = `IMM_S_TYPE(im_inst);
-	else if(`IS_U_TYPE(im_inst))	next_pipe1.imm = `IMM_U_TYPE(im_inst);
-	else if(`IS_J_TYPE(im_inst))	next_pipe1.imm = `IMM_J_TYPE(im_inst);
-	else next_pipe1.imm = '0;
 	
 	//rf_data_sel setting
 	unique case(im_inst[`OPCODE])
@@ -238,48 +275,44 @@ always_ff@(`PIPELINE_CLK_EGDE clk or posedge rst) begin
 end
 
 //-----------------EX stage--------------------------------------
-FW_SEL 	fw_s1; 		//forwarding mux sel 1
-FW_SEL 	fw_s2; 		//forwarding mux sel 2
-Data 	fs1;		//after forwarding mux s1 
-Data 	fs2;		//after forwarding mux s2 
+FW_SEL 	fws_alu1; 		
+FW_SEL 	fws_alu2;
+FW_SEL 	fws_add1; 	
+FW_SEL 	fws_data_in; 	 		
+//Data 	fs1;		//after forwarding mux s1 
+//Data 	fs2;		//after forwarding mux s2 
 Data 	alu_opnd1;	//alu operand 1 
 Data 	alu_opnd2;	//alu operand 2 
 Data 	add_opnd1;	//add operand 1 
 Data 	add_opnd2;	//add operand 2 
 Data	alu_result;
+Data	data_in;
 logic	branch_taken;
 Address branch_target;
 Data	add_result;
 
 always_comb begin
-	//fs1
-	unique case(fw_s1)
-	FW_SEL_FW1	:	fs1 = fw1;
-	FW_SEL_FW2	:	fs1 = fw2;
-	default:		fs1 = pipe1.s1;
+	unique case(fws_alu1)
+	FW_SEL_FW1	:	alu_opnd1 = fw1;
+	FW_SEL_FW2	:	alu_opnd1 = fw2;
+	default:		alu_opnd1 = pipe1.alu1;
 	endcase
-	//fs2
-	unique case(fw_s2)
-	FW_SEL_FW1	:	fs2 = fw1;
-	FW_SEL_FW2	:	fs2 = fw2;
-	default:		fs2 = pipe1.s2;
+	unique case(fws_alu2)
+	FW_SEL_FW1	:	alu_opnd2 = fw1;
+	FW_SEL_FW2	:	alu_opnd2 = fw2;
+	default:		alu_opnd2 = pipe1.alu2;
 	endcase
-	//alu_opnd1
-	unique case(pipe1.opnd1_sel)
-	OPND1_SEL_S1:	alu_opnd1 = fs1;
-	OPND1_SEL_PC:	alu_opnd1 = pipe1.pc;
-	OPND1_SEL_0	:	alu_opnd1 = '0;
-	default		:	alu_opnd1 = fs1;
+	unique case(fws_add1)
+	FW_SEL_FW1	:	add_opnd1 = fw1;
+	FW_SEL_FW2	:	add_opnd1 = fw2;
+	default:		add_opnd1 = pipe1.add1;
 	endcase
-	//alu_opnd2
-	unique case(pipe1.opnd2_sel)
-	OPND2_SEL_S2	:	alu_opnd2 = fs2;
-	OPND2_SEL_IMM	:	alu_opnd2 = pipe1.imm;
-	OPND2_SEL_4		:	alu_opnd2 = 4;
-	default			:	alu_opnd2 = fs2;
+	unique case(fws_data_in)
+	FW_SEL_FW1	:	data_in = fw1;
+	FW_SEL_FW2	:	data_in = fw2;
+	default:		data_in = pipe1.add2;
 	endcase
-	add_opnd1 = pipe1.jalr_sel ? fs1 : pipe1.pc;
-	add_opnd2 = pipe1.imm;
+	add_opnd2 = pipe1.add2;
 	add_result = ($signed(add_opnd1)+$signed(add_opnd2));
 	branch_target[31:1] =  add_result[31:1];
 	branch_target[0] =  add_result[0] & (~pipe1.jalr_sel);
@@ -318,7 +351,7 @@ always_ff@(`PIPELINE_CLK_EGDE clk or posedge rst) begin
 	pipe2.rf_write <= pipe1.rf_write;
 	pipe2.rf_data_sel <= pipe1.rf_data_sel;
 	pipe2.mem_op <= pipe1.mem_op;
-	pipe2.data_in <= fs2;
+	pipe2.data_in <= data_in;
 	
 	pipe2.result <=alu_result;
 	end
@@ -410,6 +443,15 @@ always_comb begin
 end
 assign rf_in = pipe3.rf_data_sel ? final_data_out : pipe3.result;
 //assign RF[0] = 0;
+always_latch begin
+	RF[0] <= 0;
+	if(clk) begin
+		if(pipe3.rf_write&&(pipe3.rd!='0))begin
+			RF[pipe3.rd]<=rf_in;
+		end
+	end
+end
+/*
 always_ff@(`RF_CLK_EGDE clk or posedge rst) begin
 	unique if(rst)begin
 		for(int i = 0;i<`RF_NUM;i=i+1) 
@@ -421,7 +463,7 @@ always_ff@(`RF_CLK_EGDE clk or posedge rst) begin
 		end
 	end
 end
-
+*/
 //update PC
 logic jump_branch;
 assign jump_branch = branch_taken | pipe1.jump_sel;
@@ -453,16 +495,33 @@ assign flush0 = jump_branch;
 assign flush1 = load_stall | jump_branch;
 //forwarding unit
 always_ff@(`PIPELINE_CLK_EGDE clk ) begin
-	//if(rst) fw_s1<=FW_SEL_DEFAULT;
-	if	(im_inst[`RS1]==pipe1.rd && pipe1.rd!='0 && pipe1.rf_write && ~pipe1.mem_load) fw_s1 <= FW_SEL_FW1;
-	else if (im_inst[`RS1]==pipe2.rd && pipe2.rd!='0 && pipe2.rf_write) fw_s1 <= FW_SEL_FW2;
-	else 	fw_s1<=FW_SEL_DEFAULT;
+	if(alu1_sel == ALU1_SEL_S1)begin
+		if	(im_inst[`RS1]==pipe1.rd && pipe1.rd!='0 && pipe1.rf_write && ~pipe1.mem_load) fws_alu1 <= FW_SEL_FW1;
+		else if (im_inst[`RS1]==pipe2.rd && pipe2.rd!='0 && pipe2.rf_write) fws_alu1 <= FW_SEL_FW2;
+		else 	fws_alu1<=FW_SEL_DEFAULT;
+	end
+	else fws_alu1<=FW_SEL_DEFAULT;
 	
-	//if(rst) fw_s2<=FW_SEL_DEFAULT;
-	if	(im_inst[`RS2]==pipe1.rd && pipe1.rd!='0 && pipe1.rf_write && ~pipe1.mem_load) fw_s2 <= FW_SEL_FW1;
-	else if (im_inst[`RS2]==pipe2.rd && pipe2.rd!='0 && pipe2.rf_write) fw_s2 <= FW_SEL_FW2;
-	else 	fw_s2<=FW_SEL_DEFAULT;
+	if(alu2_sel == ALU2_SEL_S2)begin
+		if	(im_inst[`RS2]==pipe1.rd && pipe1.rd!='0 && pipe1.rf_write && ~pipe1.mem_load) fws_alu2 <= FW_SEL_FW1;
+		else if (im_inst[`RS2]==pipe2.rd && pipe2.rd!='0 && pipe2.rf_write) fws_alu2 <= FW_SEL_FW2;
+		else 	fws_alu2<=FW_SEL_DEFAULT;
+	end
+	else fws_alu2<=FW_SEL_DEFAULT;
+	
+	if(add1_sel == ADD1_SEL_S1)begin
+		if	(im_inst[`RS1]==pipe1.rd && pipe1.rd!='0 && pipe1.rf_write && ~pipe1.mem_load) fws_add1 <= FW_SEL_FW1;
+		else if (im_inst[`RS1]==pipe2.rd && pipe2.rd!='0 && pipe2.rf_write) fws_add1 <= FW_SEL_FW2;
+		else 	fws_add1<=FW_SEL_DEFAULT;
+	end
+	else fws_add1<=FW_SEL_DEFAULT;
+	
 
+	if	(im_inst[`RS2]==pipe1.rd && pipe1.rd!='0 && pipe1.rf_write && ~pipe1.mem_load) fws_data_in <= FW_SEL_FW1;
+	else if (im_inst[`RS2]==pipe2.rd && pipe2.rd!='0 && pipe2.rf_write) fws_data_in <= FW_SEL_FW2;
+	else 	fws_data_in<=FW_SEL_DEFAULT;
+
+	
 end
 
 endmodule

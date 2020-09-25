@@ -4,6 +4,7 @@
 `define DATA_MEM_DATA_WIDTH	32
 `define INST_MEM_DATA_WIDTH	32
 
+
 typedef enum{
 	ALU_OP_NOP,
 	ALU_OP_ADD,
@@ -34,16 +35,24 @@ typedef enum{
 
 
 typedef enum {
-	OPND1_SEL_S1,
-	OPND1_SEL_PC,
-	OPND1_SEL_0
-}OPND1_SEL;
+	ALU1_SEL_S1,
+	ALU1_SEL_PC,
+	ALU1_SEL_0
+}ALU1_SEL;
 
 typedef enum {
-	OPND2_SEL_S2,
-	OPND2_SEL_IMM,
-	OPND2_SEL_4
-}OPND2_SEL;
+	ALU2_SEL_S2,
+	ALU2_SEL_IMM,
+	ALU2_SEL_4
+}ALU2_SEL;
+typedef enum {
+	ADD1_SEL_PC,
+	ADD1_SEL_S1
+}ADD1_SEL;
+typedef enum {
+	ADD2_SEL_IMM,
+	ADD2_SEL_S2
+}ADD2_SEL;
 
 typedef enum {
 	FW_SEL_DEFAULT,
@@ -68,13 +77,17 @@ typedef struct packed {
 typedef struct packed{
 	ALU_OP 		alu_op;
 	MEM_OP 		mem_op;
-	Data		s1;
-	Data		s2;
-	Data		imm;
-	Address		pc;
+	Data		add1;
+	Data		add2;
+	Data		alu1;
+	Data		alu2;
+	//Data		s1;
+	//Data		s2;
+	//Data		imm;
+	//Address		pc;
 	RFTag		rd;
-	OPND1_SEL	opnd1_sel;
-	OPND2_SEL	opnd2_sel;
+	//OPND1_SEL	opnd1_sel;
+	//OPND2_SEL	opnd2_sel;
 	logic		mem_load;
 	logic		mem_store;
 	logic 		jalr_sel;
