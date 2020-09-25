@@ -15,7 +15,7 @@ output logic [31:0] DM_DI,
 input [31:0] DM_DO
 
 );
-
+logic sysinit_flag;
 
 Address		PC;
 Address 	nPC;
@@ -47,20 +47,21 @@ assign fw2 = rf_in;
 
 
 //IF stage
-assign IM_A = PC[15:2];
-assign im_inst = IM_DO;
+assign IM_A = pc_stall ? PC[15:2] : nPC[15:2];
+//assign im_inst = IM_DO;
+assign im_inst = pipe0.inst;
 //always@* pipe0.inst = im_inst ;
 
 always_ff@(`PIPELINE_CLK_EGDE clk or posedge rst) begin
 	unique if(rst)begin
 		pipe0 <= '0;
-		pipe0.inst_valid <= 1'b0;
+		//pipe0.inst_valid <= 1'b0;
 	end
-	else if(pipe0_stall) pipe0.pc <= pipe0.pc;
+	else if(pipe0_stall|sysinit_flag) pipe0 <= pipe0;
 	else begin
 		pipe0.pc <= PC;
 		pipe0.inst_valid <=  flush0 ? '0: 1'b1 ;
-		//pipe0.inst <= im_inst;
+		pipe0.inst <= IM_DO;
 	end
 end
 
@@ -345,13 +346,13 @@ always_ff@(`PIPELINE_CLK_EGDE clk or posedge rst) begin
 	end
 	else if(flush2) pipe2 <= '0;
 	else begin
-	pipe2.mem_load<=pipe1.mem_load;
-	pipe2.mem_store<=pipe1.mem_store;
+	//pipe2.mem_load<=pipe1.mem_load;
+	//pipe2.mem_store<=pipe1.mem_store;
 	pipe2.rd <= pipe1.rd;
 	pipe2.rf_write <= pipe1.rf_write;
 	pipe2.rf_data_sel <= pipe1.rf_data_sel;
 	pipe2.mem_op <= pipe1.mem_op;
-	pipe2.data_in <= data_in;
+	//pipe2.data_in <= data_in;
 	
 	pipe2.result <=alu_result;
 	end
@@ -360,7 +361,7 @@ end
 
 //MEM stage
 
-Data dm_out;
+//Data dm_out;
 always_comb begin
 	/*
 	case(pipe2.mem_op)
@@ -369,15 +370,15 @@ always_comb begin
 	default		:	DM_OE = 1'b0;
 	endcase
 	*/
-	DM_OE = pipe3.rf_data_sel;  
+	DM_OE = pipe2.rf_data_sel;  
 	
 	
 	
-	unique case(pipe2.mem_op)
+	unique case(pipe1.mem_op)
 	MEM_OP_SW	:	DM_WEB = 4'b0000; //active low
 	MEM_OP_SB	: 	begin	
 	//handle the memory is byte address problem
-		unique case (pipe2.result[1:0])
+		unique case (alu_result[1:0])
 		2'd0	:	DM_WEB = 4'b1110;
 		2'd1	:	DM_WEB = 4'b1101;
 		2'd2	:	DM_WEB = 4'b1011;
@@ -389,7 +390,7 @@ always_comb begin
 	endcase
 	
 	//DM_A = pipe2.result[13:0];
-	DM_A = pipe2.result[15:2];
+	DM_A = alu_result[15:2];
 	/*
 	case(pipe1.mem_op)
 	MEM_OP_SW	:	DM_WEB = 4'b0000; //active low
@@ -403,22 +404,24 @@ always_comb begin
 	endcase
 	*/
 	//DM_DI = pipe2.data_in;
-	unique case(pipe2.mem_op)
-	MEM_OP_SW	:	DM_DI = pipe2.data_in;
+	unique case(pipe1.mem_op)
+	MEM_OP_SW	:	DM_DI = data_in;
 	MEM_OP_SB	: 	begin	
 		//handle the memory is byte address problem
-		unique case (pipe2.result[1:0])
-		2'd0	:	DM_DI = {24'h000000,pipe2.data_in[7:0]};
-		2'd1	:	DM_DI = {16'h0000,pipe2.data_in[7:0],8'h00};
-		2'd2	:	DM_DI = {8'h00,pipe2.data_in[7:0],16'h0000};
-		2'd3	:	DM_DI = {pipe2.data_in[7:0],24'h000000};
-		default	:	DM_DI = pipe2.data_in;
+		unique case (alu_result[1:0])
+		2'd0	:	DM_DI = {24'h000000,data_in[7:0]};
+		2'd1	:	DM_DI = {16'h0000,data_in[7:0],8'h00};
+		2'd2	:	DM_DI = {8'h00,data_in[7:0],16'h0000};
+		2'd3	:	DM_DI = {data_in[7:0],24'h000000};
+		default	:	DM_DI = data_in;
 		endcase
 	end
-	default		:	DM_DI = pipe2.data_in;
+	default		:	DM_DI = data_in;
 	endcase
 	
-	dm_out = DM_DO;
+	//unique if(pipe2.mem_op == MEM_OP_LB) dm_out = {{24{DM_DO[7]}},DM_DO[7:0]};
+	//else dm_out = DM_DO;
+	//dm_out = DM_DO;
 	
 end
 always_ff@(`PIPELINE_CLK_EGDE clk or posedge rst) begin
@@ -427,7 +430,7 @@ always_ff@(`PIPELINE_CLK_EGDE clk or posedge rst) begin
 	end
 	else begin
 		pipe3.rd <= pipe2.rd;
-		//pipe3.data_out <= DM_DO;
+		pipe3.data_out <= DM_DO;
 		pipe3.result <= pipe2.result;
 		pipe3.rf_write <= pipe2.rf_write;
 		pipe3.rf_data_sel <= pipe2.rf_data_sel;
@@ -437,12 +440,16 @@ end
 
 //WB stage
 Data final_data_out;
+
 always_comb begin
-	unique if(pipe3.mem_op == MEM_OP_LB) final_data_out = {{24{dm_out[7]}},dm_out[7:0]};
-	else final_data_out = dm_out;
+	
+	
+	unique if(pipe3.mem_op == MEM_OP_LB) final_data_out = {{24{pipe3.data_out[7]}},pipe3.data_out[7:0]};
+	else final_data_out = pipe3.data_out;
 end
+
 assign rf_in = pipe3.rf_data_sel ? final_data_out : pipe3.result;
-//assign RF[0] = 0;
+
 always_latch begin
 	RF[0] <= 0;
 	if(clk) begin
@@ -479,9 +486,17 @@ always_ff@(`PIPELINE_CLK_EGDE clk or posedge rst) begin
 	end
 end
 
+
+always_ff@(posedge clk)begin
+	if(rst) sysinit_flag<=1'b1;
+	else sysinit_flag <=1'b0;
+end
+
 //controller
 
-assign pc_stall = load_stall;
+assign pc_stall = load_stall | sysinit_flag;
+//assign pc_stall = load_stall | rst;
+/*
 always_comb begin
 	unique if(rst)begin
 	IM_CS = 1'b1;
@@ -490,6 +505,8 @@ always_comb begin
 		IM_CS = load_stall ? 1'b0 : 1'b1;
 	end
 end
+*/
+assign IM_CS = 1'b1;
 assign pipe0_stall = load_stall;
 assign flush0 = jump_branch;
 assign flush1 = load_stall | jump_branch;

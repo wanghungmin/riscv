@@ -68,7 +68,7 @@ typedef logic [`RF_TAG_WIDTH-1:0] 	RFTag;
 
 
 typedef struct packed {
-	//Instruction 	inst;
+	Instruction 	inst;
 	logic			inst_valid;
 	Address			pc;
 } PipelineReg0;
@@ -99,10 +99,10 @@ typedef struct packed{
 typedef struct packed {
 	MEM_OP 		mem_op;
 	RFTag		rd;
-	Data		data_in;
+	//Data		data_in;
 	Data		result;
-	logic		mem_load;
-	logic		mem_store;
+	//logic		mem_load;
+	//logic		mem_store;
 	logic		rf_write;
 	logic		rf_data_sel;
 } PipelineReg2;
